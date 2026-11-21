@@ -1,0 +1,8 @@
+# offline stages (.venv, Python 3.12). The scan runs in agent_data_rl's venv; the room field in
+# .venv-appearance from r2s2r's scripts/appearance/requirements-cuda.txt; Blender 4.5.3 for rendering.
+pycolmap==4.2.1
+mujoco==3.12.0
+numpy
+scipy
+opencv-python-headless
+trimesh
