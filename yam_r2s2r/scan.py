@@ -27,7 +27,7 @@ import cv2
 import mujoco
 import numpy as np
 
-from .common import AGENT_REPO, SIDES
+from .common import AGENT_REPO, DEFAULT_SPEC, SIDES, TABLE_Z
 
 sys.path.insert(0, str(AGENT_REPO / "scripts/real"))
 sys.path.insert(0, str(AGENT_REPO))
@@ -36,7 +36,6 @@ import rig as rigmod  # noqa: E402
 import safety  # noqa: E402
 from blind_insertion.assets.real_camera import load_spec  # noqa: E402
 
-TABLE_Z = -0.023          # table top in the right base frame (mounting plates under the bases)
 SEEDS = ([0, 1.0, 1.0, -0.5, 0, 0], [0, 1.6, 1.3, -0.9, 0, 0], [0, 0.8, 0.6, 0.2, 0, 0],
          [0.6, 1.0, 1.0, -0.5, 0, 0], [-0.6, 1.0, 1.0, -0.5, 0, 0])
 
@@ -139,7 +138,17 @@ def make_plan(side, spec, q_rest_meas, n_table, n_room, seed, grid, kin=None, ch
             "frame": "joints: encoder frame (as the motors read); targets and camera poses: this arm's base frame"}
 
 
+def use_rig(a):
+    """Point agent_data_rl's rig module (joint offsets, wrist camera ports, ZED serial) at this cell."""
+    rigmod.SPEC = Path(a.spec)
+    for side, dev in getattr(a, "cam_device", []):
+        rigmod.WRIST_CAM[side] = dev
+    if getattr(a, "zed_serial", None):
+        rigmod.ZED_SERIAL = a.zed_serial
+
+
 def cmd_plan(a):
+    use_rig(a)
     spec = load_spec(str(rigmod.SPEC))
     grid = {"x": a.grid_x, "y": a.grid_y}
     plans = {}
@@ -241,13 +250,19 @@ def grab_top(out):
 
 def cmd_run(a):
     out = Path(a.out)
+    use_rig(a)
     spec = load_spec(str(rigmod.SPEC))
     grid = {"x": a.grid_x, "y": a.grid_y}
     sides = SIDES if a.side == "both" else (a.side,)
     out.mkdir(parents=True, exist_ok=True)
     session = {"condition": a.condition or out.name, "time": time.strftime("%Y-%m-%d %H:%M:%S %Z"),
-               "rig_spec": str(rigmod.SPEC), "table_z": TABLE_Z, "notes": a.notes, "cameras": {}, "plans": {},
+               "rig_spec": str(rigmod.SPEC), "table_z": a.table_z, "notes": a.notes, "cameras": {}, "plans": {},
                "other_arm_q": {}, "rest_q": {}, "other_arm_q_note": "the arm that is not scanning is assumed parked at the folded rest (all zeros)"}
+    if (out / "session.json").exists():   # adding a side to an existing session (e.g. after a camera dropout): keep the rest
+        old = json.loads((out / "session.json").read_text())
+        for k in ("cameras", "plans", "other_arm_q", "rest_q"):
+            session[k] = {s: v for s, v in old.get(k, {}).items() if s not in sides}
+        session["time"] = old.get("time", session["time"])
     if not a.yes:
         print("This moves the arm. Bases clamped, estop.py running, other arm parked, table as you want it scanned?")
         if input("type 'go' to start > ").strip().lower() != "go":
@@ -303,6 +318,8 @@ def main():
     sub = p.add_subparsers(dest="cmd", required=True)
     for name in ("plan", "run"):
         c = sub.add_parser(name)
+        c.add_argument("--spec", default=str(DEFAULT_SPEC), help="rig camera spec (default $YAM_RIG_SPEC or duchamp3)")
+        c.add_argument("--table-z", type=float, default=TABLE_Z, help="table top in the right base frame (default $YAM_TABLE_Z)")
         c.add_argument("--side", choices=["right", "left", "both"], required=True)
         c.add_argument("--out", required=name == "run")
         c.add_argument("--table-views", type=int, default=45)
@@ -311,6 +328,7 @@ def main():
         c.add_argument("--grid-x", type=float, nargs="+", default=[0.22, 0.30, 0.38], help="table targets, forward (m)")
         c.add_argument("--grid-y", type=float, nargs="+", default=[-0.10, 0.0, 0.12, 0.24],
                        help="table targets, toward the other arm (m)")
+    c.add_argument("--zed-serial", type=int, help="top ZED serial (default: agent_data_rl rig.py ZED_SERIAL)")
     c.add_argument("--condition", help="lighting label, e.g. day_1400, dusk_roomlights, night")
     c.add_argument("--notes", default="")
     c.add_argument("--max-vel", type=float, default=0.3)
@@ -318,6 +336,8 @@ def main():
     c.add_argument("--no-lock-exposure", dest="lock_exposure", action="store_false")
     c.add_argument("--zed", action="store_true", help="also save one frame of the top ZED 2 (taken before the arms connect)")
     c.add_argument("--yes", action="store_true", help="skip the 'go' prompt")
+    c.add_argument("--cam-device", nargs=2, action="append", metavar=("SIDE", "PATH"), default=[],
+                   help="wrist camera device for a side, when its cable is on another USB port than agent_data_rl's rig.py says")
     a = p.parse_args()
     {"plan": cmd_plan, "run": cmd_run}[a.cmd](a)
 

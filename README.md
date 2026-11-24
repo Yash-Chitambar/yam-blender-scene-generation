@@ -14,6 +14,45 @@ the checked-out `yash-dev` branch of `~/r2s2r` does not contain the appearance p
 Scan data, datasets, trained room fields and renders live in `work/` on the rig PC (duchamp3) and are
 not in git (several GB). `docs/` holds a few result images.
 
+## Another YAM cell
+
+The code is not tied to duchamp3; five things are, and each is a setting:
+
+| What | Where it comes from | How to set it |
+|---|---|---|
+| Robot drivers and safety (i2rt, `safety.SafeArm`, `calib.Mover`, e-stop) | an `agent_data_rl` checkout on the cell's PC | `YAM_AGENT_REPO=/path/to/agent_data_rl` |
+| CAN adapters and wrist-camera USB ports | that checkout's `scripts/real/rig.py` (`CAN_SERIAL`, `WRIST_CAM`) | edit `rig.py` for the cell, or `scan run --cam-device left /dev/v4l/by-path/...` for one run |
+| Camera calibration: base-to-base pose, joint offsets, wrist intrinsics + mounts, top camera | a rig spec JSON from `agent_data_rl/scripts/real/calib.py` (`zed`, `find`, `collect`, `solve`) | `YAM_RIG_SPEC=/path/to/real_cameras_<cell>.json`, or `--spec` on each command |
+| Table height in the right-base frame | measured: `check_poses` on a board on the table, or `table_z_from_points` printed by `reconstruct sfm` | `YAM_TABLE_Z=-0.02`, or `--table-z` |
+| Top ZED serial (optional) | the camera's label / `ZED_Explorer` | `scan run --zed --zed-serial 12345678` |
+
+Plus the render-side tools, the same on any machine: `R2S2R_APPEARANCE_ROOT` (the r2s2r appearance
+snapshot, see above) and `R2S2R_BLENDER` (Blender 4.5.3).
+
+Order on a new cell:
+
+```bash
+cd ~/yam_r2s2r
+export YAM_AGENT_REPO=~/agent_data_rl YAM_RIG_SPEC=~/agent_data_rl/blind_insertion/configs/real_cameras_<cell>.json
+A=$YAM_AGENT_REPO/.venv/bin/python; P=.venv/bin/python
+# 0. calibrate the cell with agent_data_rl (writes the spec); check it before scanning:
+(cd $YAM_AGENT_REPO && .venv/bin/python scripts/real/verify_cameras.py --out data/calib/verify_<cell>)
+# 1. dry run: IK and safety checks for every planned view, no hardware
+$A -m yam_r2s2r.scan plan --side both --out work/plan.json --table-views 40 --room-views 80 --seed 11
+# 2. a first scan, then measure the table height and set YAM_TABLE_Z before building the environment
+$A -m yam_r2s2r.scan run --side both --out work/sessions/<cond> --condition <cond> --table-views 40 --room-views 80 --seed 11 --zed
+$P -m yam_r2s2r.build_dataset --session work/sessions/<cond> --out work/dataset
+$P -m yam_r2s2r.reconstruct sfm --dataset work/dataset --out work/env/sfm   # prints table_z_from_points
+```
+
+Then follow "Recommended order for a new scan" below. Assumptions that hold for the I2RT YAM with
+the stock wrist webcam and would need code changes otherwise: Menagerie `yam_linear_4310` kinematics
+and fingers, world frame = right arm base, wrist images 1280x1024, two arms named `right` / `left`.
+
+If a wrist camera drops off USB mid-scan (it happened on 2026-11-22), the arm returns to rest and
+the views saved so far stay. Move the partial `<side>/` folder aside and rerun that side alone into
+the same session (`scan run --side left --out <same session>`); the other side's entries are kept.
+
 ## Stages
 
 | # | Command | Python | Reads | Writes |
@@ -64,7 +103,20 @@ start). Exposure and white balance are locked for the scan and set back to auto 
 
 ## What exists in `work/` now
 
-Real scan `sessions/day_1645` (2026-11-20, both arms, 75 views each: 40 table + 35 room, exposure and white
+Three real scans, one environment per lighting condition (all on duchamp3):
+
+| scan | time | views | dataset | environment | room field | held-out PSNR |
+|---|---|---|---|---|---|---|
+| `day_1645` | 2026-11-20 16:45 | 150 wrist | `dataset` | `env` | `room/splat` | 21.8 dB mean |
+| `dusk_1716` | 2026-11-20 17:16 | 240 wrist + top | `dataset2` | `env2` | `room/splat2` | 23.9 dB mean, 7.8 worst |
+| `midday_1215` | 2026-11-22 12:15 | 240 wrist + top | `dataset3` | `env3` | `room/splat3` | 24.5 dB mean, 9.6 worst |
+
+`midday_1215`: poses refined from 1.65 to 0.66 px; table texture built with the off-colour filter
+below (median 0.10 sRGB, a dark table); back wall 75% covered. `docs/midday_check.jpg` compares
+Blender + the midday field (top row) with real frames (bottom row). Night and morning scans are not
+taken yet.
+
+First scan `sessions/day_1645` (2026-11-20, both arms, 75 views each: 40 table + 35 room, exposure and white
 balance locked, none skipped):
 
 - `dataset/` - 150 frames (130 train / 20 validation) in the r2s2r benchmark contract
@@ -158,6 +210,10 @@ textured Cycles surface, so it relights with everything else.
 - FK poses are good to ~4 px; the SfM stage keeps them fixed. For a sharp room field, refine poses first.
 - Robot masks use the Menagerie `linear_4310` fingers; the real FlexPoint tips are larger, so the own
   gripper is masked with a wide margin. The arm that is not scanning is assumed parked at all-zeros.
+- Table texture: pixels further than `--max-offset` (default 30/255) from the colour of the
+  best-seen table area are replaced by that colour and blended in. Those are clutter behind the arm
+  bases and wall reflections that the plane projection smears onto the table; without the filter the
+  table renders whitish (`env` and `env2` were built before it and still have that).
 - Table height is -0.023 m by default; SfM on the calibration data puts the surface at -0.026 m
   (`report.json: table_z_from_points`). Pass `--table-z` once a real scan confirms it.
 - Robot colours are two flat materials (black / light); the yellow finger tips and the wrist webcam

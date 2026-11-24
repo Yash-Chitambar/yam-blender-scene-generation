@@ -26,7 +26,7 @@ import numpy as np  # noqa: E402
 
 from . import scene as scene_mod  # noqa: E402
 from .build_dataset import robot_mask  # noqa: E402
-from .common import WRIST_RES, Rig, pose_dict  # noqa: E402
+from .common import TABLE_Z, WRIST_RES, Rig, pose_dict  # noqa: E402
 
 PSIGN = [float(v) for v in os.environ.get('YAM_PSIGN', '-1 -1').split()]   # MuJoCo's principal offset is opposite to (c - centre) on both axes: checked against our pinhole projection
 CV_TO_MJ = np.diag([1.0, -1.0, -1.0])     # OpenCV optical axes -> MuJoCo camera axes (looks along -z, +y up)
@@ -92,9 +92,10 @@ def main():
     p.add_argument("--fps", type=float, default=12.0)
     p.add_argument("--wrist-width", type=int, default=640)
     p.add_argument("--top-width", type=int, default=640)
-    p.add_argument("--table-z", type=float, default=-0.023)
+    p.add_argument("--spec", type=Path, help="rig camera spec (default $YAM_RIG_SPEC)")
+    p.add_argument("--table-z", type=float, default=TABLE_Z)
     a = p.parse_args()
-    rig = Rig(table_z=a.table_z)
+    rig = Rig(*([a.spec] if a.spec else []), table_z=a.table_z)
     arms = ("right", "left")
     sizes = {f"{s}_wrist": (a.wrist_width, round(a.wrist_width * WRIST_RES[1] / WRIST_RES[0])) for s in arms}
     sizes["top"] = (a.top_width, round(a.top_width * 1080 / 1920))

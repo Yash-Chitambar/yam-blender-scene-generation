@@ -21,7 +21,7 @@ import mujoco
 import numpy as np
 
 from . import scene as scene_mod
-from .common import R2S2R_APPEARANCE, SIDES, WRIST_RES, Kin, Rig
+from .common import R2S2R_APPEARANCE, SIDES, TABLE_Z, WRIST_RES, Kin, Rig
 
 
 def load_trajectory(a, rig, model, arms):
@@ -89,7 +89,7 @@ def main():
     p.add_argument("--stride", type=int, default=1)
     p.add_argument("--max-frames", type=int)
     p.add_argument("--spec", type=Path)
-    p.add_argument("--table-z", type=float, default=-0.023)
+    p.add_argument("--table-z", type=float, default=TABLE_Z)
     a = p.parse_args()
     rig = Rig(*([a.spec] if a.spec else []), table_z=a.table_z)
     arms = tuple(a.arms)

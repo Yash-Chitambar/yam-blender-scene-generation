@@ -16,6 +16,7 @@ import argparse
 import importlib.util
 import json
 import math
+import os
 import sys
 import tempfile
 from pathlib import Path
@@ -24,7 +25,7 @@ import bpy
 import numpy as np
 from mathutils import Matrix, Vector
 
-DEFAULT_R2S2R_SCRIPTS = "/home/yashc/r2s2r_handoff/1_room_appearance/composite_handoff_v2/scripts/appearance"
+DEFAULT_R2S2R_SCRIPTS = os.path.join(os.environ.get("R2S2R_APPEARANCE_ROOT", "/home/yashc/r2s2r_handoff/1_room_appearance/composite_handoff_v2"), "scripts/appearance")
 
 
 def load_upstream(folder):

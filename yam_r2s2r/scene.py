@@ -12,7 +12,7 @@ from pathlib import Path
 import mujoco
 import numpy as np
 
-from .common import MENAGERIE_YAM, Rig, pose_dict
+from .common import MENAGERIE_YAM, TABLE_Z, Rig, pose_dict
 
 ARM_NQ = 8          # 6 arm joints + 2 coupled finger slides
 TABLE_SIZE = (1.6, 1.8, 0.04)     # x, y, thickness (m)
@@ -68,7 +68,7 @@ def main():
     p.add_argument("--out", required=True, type=Path)
     p.add_argument("--arms", nargs="+", default=["right", "left"], choices=["right", "left"])
     p.add_argument("--spec", type=Path)
-    p.add_argument("--table-z", type=float, default=-0.023)
+    p.add_argument("--table-z", type=float, default=TABLE_Z)
     p.add_argument("--no-table", action="store_true", help="the table comes from the environment bundle instead")
     a = p.parse_args()
     rig = Rig(*([a.spec] if a.spec else []), table_z=a.table_z)

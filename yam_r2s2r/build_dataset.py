@@ -27,7 +27,7 @@ import mujoco
 import numpy as np
 
 from . import scene as scene_mod
-from .common import SIDES, Kin, Rig, camera_in_world
+from .common import SIDES, TABLE_Z, Kin, Rig, camera_in_world
 
 MASK_DILATE_PX = 12
 # The camera's own gripper fills the bottom of every wrist frame, and the real fingers (FlexPoint
@@ -211,7 +211,7 @@ def main():
     p.add_argument("--session", nargs="+", required=True, type=Path)
     p.add_argument("--out", required=True, type=Path)
     p.add_argument("--spec", type=Path)
-    p.add_argument("--table-z", type=float, default=-0.023)
+    p.add_argument("--table-z", type=float, default=TABLE_Z)
     p.add_argument("--solve-right", type=Path, help="calib.py solve_right.json to use instead of the spec")
     p.add_argument("--solve-left", type=Path)
     p.add_argument("--val-every", type=int, default=7)

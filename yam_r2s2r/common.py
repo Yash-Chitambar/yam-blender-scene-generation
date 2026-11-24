@@ -18,7 +18,9 @@ AGENT_REPO = Path(os.environ.get("YAM_AGENT_REPO", "/home/yashc/agent_data_rl"))
 R2S2R_APPEARANCE = Path(os.environ.get(
     "R2S2R_APPEARANCE_ROOT", "/home/yashc/r2s2r_handoff/1_room_appearance/composite_handoff_v2"))
 MENAGERIE_YAM = AGENT_REPO / "third_party/mujoco_menagerie/i2rt_yam/yam_linear_4310.xml"
-DEFAULT_SPEC = AGENT_REPO / "blind_insertion/configs/real_cameras_duchamp3.json"
+# Per-rig settings. Defaults are the duchamp3 cell; on another YAM cell set these (see README, "Another YAM").
+DEFAULT_SPEC = Path(os.environ.get("YAM_RIG_SPEC", AGENT_REPO / "blind_insertion/configs/real_cameras_duchamp3.json"))
+TABLE_Z = float(os.environ.get("YAM_TABLE_Z", "-0.023"))     # table top in the right base frame (m)
 SIDES = ("right", "left")
 WRIST_RES = (1280, 1024)
 
@@ -50,7 +52,7 @@ def pose_dict(T):
 class Rig:
     """Calibration of one YAM cell, read from the agent_data_rl camera spec."""
 
-    def __init__(self, spec_path=DEFAULT_SPEC, table_z=-0.023):
+    def __init__(self, spec_path=DEFAULT_SPEC, table_z=TABLE_Z):
         self.spec_path = Path(spec_path)
         s = json.loads(self.spec_path.read_text())
         self.spec = s

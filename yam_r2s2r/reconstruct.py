@@ -92,15 +92,27 @@ def cmd_texture(a):
     with np.errstate(all="ignore"):
         tex = np.nan_to_num(np.nanpercentile(values, a.percentile, axis=0)).astype(np.uint8)
     del values
+    a.out.mkdir(parents=True, exist_ok=True)
     covered = count >= a.min_views
     if not covered.any():
         raise SystemExit("no table pixel is seen by enough views")
+    if a.max_offset > 0:
+        # the table's own colour: where the most views agree it is table (in front of the arms). Pixels far
+        # from it are off-plane clutter (behind the bases, the wall) or baked reflections: they get that colour
+        well_seen = count >= np.percentile(count[covered], 70)
+        table_color = np.median(tex[well_seen], axis=0)
+        keep = covered & (np.abs(tex.astype(np.float32) - table_color).max(-1) <= a.max_offset)
+        keep = cv2.morphologyEx(keep.astype(np.uint8), cv2.MORPH_OPEN, np.ones((9, 9), np.uint8)) > 0
+        cv2.imwrite(str(a.out / "table_kept.png"), keep.astype(np.uint8) * 255)
+        covered = keep
     ys, xs = np.where(covered)
     fill = np.median(tex[covered], axis=0).astype(np.uint8)
     hole = (~covered).astype(np.uint8) * 255
     tex[~covered] = fill
-    tex = cv2.inpaint(tex, cv2.erode(hole, np.ones((3, 3), np.uint8)), 5, cv2.INPAINT_TELEA) if a.inpaint else tex
-    a.out.mkdir(parents=True, exist_ok=True)
+    if a.inpaint:   # blend the fill into the kept texture; inpainting would drag edge colours across the holes
+        w = cv2.GaussianBlur(covered.astype(np.float32), (0, 0), 12)[..., None]
+        soft = cv2.GaussianBlur(tex, (0, 0), 12).astype(np.float32)
+        tex = np.where(covered[..., None], tex, (w * soft + (1 - w) * fill)).astype(np.uint8)
     cv2.imwrite(str(a.out / "table_texture.png"), tex)
     cv2.imwrite(str(a.out / "table_coverage.png"), np.clip(count * 255 // max(count.max(), 1), 0, 255).astype(np.uint8))
     env = {"schema": "yam_r2s2r_env_v1", "world_frame": bench["world_frame"], "table_z": z,
@@ -228,6 +240,7 @@ def main():
     c.add_argument("--min-elevation", type=float, default=25, help="deg: drop grazing rays")
     c.add_argument("--percentile", type=float, default=35, help="per-pixel percentile over views (50 = median)")
     c.add_argument("--no-inpaint", dest="inpaint", action="store_false")
+    c.add_argument("--max-offset", type=float, default=30, help="replace pixels further than this from the table's own colour (0-255; 0 = keep all)")
     c = sub.add_parser("refine")
     c.add_argument("--dataset", required=True, type=Path)
     c.add_argument("--rounds", type=int, default=2)
